@@ -18,9 +18,15 @@ This repository contains a self-reimplemented version of **Long-LRM**, including
 
 ---
 
+## Inference script for custom data
+We provide a simple script for running inference on custom data in `inference.py`. Remember to fill in the Long-LRM root path, the data json path, the checkpoint path and the output folder path. Note how the input cameras are normalized as in the training dataloader. Note we provide a separate pre-trained checkpoint with aspect ratio augmentation below.
+
+---
+
 ## Pre-trained model weights
 Usage: put the .pt file in a folder with the same name as your config, and then put the folder into the checkpoints folder
 - DL3DV 32 960x540 inputs (Table 1): [download here](https://huggingface.co/arthurhero/llrm_checkpoints/resolve/main/dl3dv_i540_32input_8target/checkpoint_000010000.pt)
+- DL3DV 32 inputs with aspect ratio augmentation (from 540x540 to 540x960): [download here](https://huggingface.co/arthurhero/llrm_checkpoints/resolve/main/dl3dv_i540_32input_8target_aug/checkpoint_000010000.pt)
 
 Copyright 2025 Adobe Inc.
 
