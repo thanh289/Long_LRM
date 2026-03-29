@@ -11,4 +11,4 @@ evaluation/
 __pycache__/
 .vscode
 api_keys.yaml
-.pt
+.pth
