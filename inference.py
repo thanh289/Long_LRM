@@ -132,7 +132,7 @@ def get_gaussian_reconstruction(llrm_root, json_path, output_folder, checkpoint_
     model.eval()
     input_dict = {k: v.to(device) for k, v in input_dict.items()}
 
-    with torch.no_grad(), torch.autocast(dtype=torch.bfloat16, device_type="cuda", enabled=True):
+    with torch.no_grad(), torch.autocast(dtype=torch.float16, device_type="cuda", enabled=True):
         ret_dict = model(input_dict)
 
     # save reconstruction outputs
@@ -142,7 +142,7 @@ def get_gaussian_reconstruction(llrm_root, json_path, output_folder, checkpoint_
     for key in gaussian_dict:
         if isinstance(gaussian_dict[key], torch.Tensor):
             gaussian_dict[key] = gaussian_dict[key][0]
-    with torch.no_grad(), torch.autocast(dtype=torch.bfloat16, device_type="cuda", enabled=True):
+    with torch.no_grad(), torch.autocast(dtype=torch.float16, device_type="cuda", enabled=True):
         model.save_input_video(input_intr[0].to(device), input_c2ws[0].to(device), gaussian_dict, height, width, video_save_path, insert_frame_num = 16)
         print(f"Saved input trajectory video to {video_save_path}")
         model.save_gaussian_ply(gaussian_dict, gaussian_save_path, opacity_threshold=0.004)
