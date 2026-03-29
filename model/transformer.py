@@ -61,7 +61,8 @@ class SelfAttention(nn.Module):
         if self.use_flashatt_v2:
             qkv = qkv.permute(2, 0, 1, 3, 4)
             q, k, v = qkv[0], qkv[1], qkv[2] # (B, N, H, C)
-            x = xops.memory_efficient_attention(q, k, v, op=(xops.fmha.flash.FwOp, xops.fmha.flash.BwOp), p=self.attn_drop_p)
+            # x = xops.memory_efficient_attention(q, k, v, op=(xops.fmha.flash.FwOp, xops.fmha.flash.BwOp), p=self.attn_drop_p)
+            x = xops.memory_efficient_attention(q, k, v, op=None, p=self.attn_drop_p)
             x = rearrange(x, 'b n h d -> b n (h d)')
         else:
             qkv = qkv.permute(2, 0, 3, 1, 4)
