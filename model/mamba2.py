@@ -15,6 +15,10 @@ from mamba_ssm.ops.triton.layernorm_gated import RMSNorm as RMSNormGated, LayerN
 from mamba_ssm.ops.triton.layer_norm import RMSNorm
 from mamba_ssm.ops.triton.ssd_combined import mamba_split_conv1d_scan_combined
 
+# Basically, for transformer, each token have to look at all other tokens
+# But for mamba, each token only need to look at the previous token (State space model)
+
+
 class Mamba2SingleScan(nn.Module):
     def __init__(
         self,

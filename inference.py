@@ -40,7 +40,7 @@ def get_gaussian_reconstruction(llrm_root, json_path, output_folder, checkpoint_
     # load data
     scene_data = json.load(open(json_path, 'r'))
     scene_name = scene_data['scene_name']
-    frames = scene_data['frames']
+    frames = scene_data['frames'] # each frame has: file_path, h, w, fx, fy, cx, cy, w2c
     num_frames = len(frames)
     assert num_frames >= input_num, f"Not enough frames: {num_frames} < {input_num}"
     height_orig, width_orig = frames[0]['h'], frames[0]['w']
@@ -74,6 +74,7 @@ def get_gaussian_reconstruction(llrm_root, json_path, output_folder, checkpoint_
     input_images = np.stack(input_images, axis=0) # (V, H, W, 3)
     input_images = torch.from_numpy(input_images).permute(0,3,1,2).unsqueeze(0) # (1, V, 3, H, W)
 
+    # camera intrinsics 
     fxs = np.array([frames[idx]['fx'] for idx in sample_idxs]) # (V,)
     fys = np.array([frames[idx]['fy'] for idx in sample_idxs])
     cxs = np.array([frames[idx]['cx'] for idx in sample_idxs])

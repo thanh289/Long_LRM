@@ -20,6 +20,7 @@ except:
     from mamba2 import Mamba2Block
     from loss import PerceptualLoss
 
+# Initialize weights for linear layers following the original 3D GS implementation
 def _init_weights(m):
     if isinstance(m, nn.Linear):
         nn.init.normal_(m.weight, std=.02)
@@ -32,7 +33,9 @@ class Processor(nn.Module):
         self.config = config
         self.num_layers = config.model.num_layers
         self.dims = config.model.dim
-
+        
+        # block_type: a string of length num_layers, each character is either 't' for transformer or 'm' for mamba2, 
+        # or a single character which will be repeated for all layers
         if config.model.block_type == "transformer":
             self.block_type = ["t"] * self.num_layers
         elif config.model.block_type == "mamba2":
@@ -44,6 +47,7 @@ class Processor(nn.Module):
             elif len(self.block_type) < self.num_layers:
                 self.block_type = self.block_type * (self.num_layers // len(self.block_type)) + self.block_type[:self.num_layers % len(self.block_type)]
         
+        # index of layers to perform token merging, the dimension will change after merging
         self.merge_at = config.model.get("merge_layers", [])
         if isinstance(self.dims, int):
             self.dims = [self.dims]
@@ -53,13 +57,17 @@ class Processor(nn.Module):
         if len(self.merge_at) > 0:
             self.resize_blocks = nn.ModuleList()
             self.merge_blocks = nn.ModuleList()
+
+        
         dim_cur = self.dims[0]
         for i, s in enumerate(self.block_type):
             # the merge layer
             # first reshape the token then apply conv2d (can read in the paper, last paragraph in page 3)
             if i in self.merge_at:
+                # for global tokens, we simply apply a linear layer to resize them to the new dimension
                 dim_next = self.dims[self.merge_at.index(i) + 1]
                 self.resize_blocks.append(nn.Linear(dim_cur, dim_next))
+                # for image tokens, we apply a depthwise conv2d with kernel size 2 and stride 2 to merge 4 neighboring tokens into 1 token
                 self.merge_blocks.append(
                     nn.Conv2d(dim_cur, dim_next, kernel_size=2, stride=2, padding=0, bias=True, groups=dim_cur)
                 )
@@ -182,6 +190,8 @@ class LongLRM(nn.Module):
         self.config = config
         input_dim = 9 # RGB + plucker ray
         self.patch_size = config.model.patch_size
+        # if patch size = 8, after 2 merge layers, the patch size will become 8 * 4 = 32
+        # each token now represents a patch of 32x32
         self.patch_size_out = self.patch_size * 2 ** len(config.model.get("merge_layers", [])) 
         if isinstance(config.model.dim, int):
             self.dim_start = config.model.dim
@@ -199,6 +209,11 @@ class LongLRM(nn.Module):
         self.tokenizer.apply(_init_weights)
         self.input_layernorm = nn.LayerNorm(self.dim_start, bias=False)
         self.processor = Processor(config)
+        # 3          = xyz 
+        # (sh+1)²×3 =  SH coefficients for RGB
+        # 3          = scale 
+        # 4          = rotation (quaternion)
+        # 1          = opacity
         self.tokenDecoder = nn.Sequential(
             nn.LayerNorm(self.dim_out, bias=False),
             nn.Linear(

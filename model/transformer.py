@@ -75,6 +75,8 @@ class SelfAttention(nn.Module):
         x = self.proj_drop(x)
         return x
 
+# Input -> norm -> attn -> drop_path -> norm -> mlp -> drop_path -> output
+# For mlp: input -> linear -> act -> drop -> linear -> drop -> output
 
 class TransformerBlock(nn.Module):
     def __init__(self, dim, head_dim, mlp_ratio=4., mlp_bias=False, qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
