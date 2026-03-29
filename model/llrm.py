@@ -55,6 +55,8 @@ class Processor(nn.Module):
             self.merge_blocks = nn.ModuleList()
         dim_cur = self.dims[0]
         for i, s in enumerate(self.block_type):
+            # the merge layer
+            # first reshape the token then apply conv2d (can read in the paper, last paragraph in page 3)
             if i in self.merge_at:
                 dim_next = self.dims[self.merge_at.index(i) + 1]
                 self.resize_blocks.append(nn.Linear(dim_cur, dim_next))
@@ -70,6 +72,7 @@ class Processor(nn.Module):
             else:
                 raise ValueError(f"Invalid block type {s}")
 
+    # token mergering logic
     def run_one_block(self, i):
         def _run_one_block(x, num_global_tokens, v, h, w):
             if i in self.merge_at:

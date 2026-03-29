@@ -35,6 +35,7 @@ class Dataset(Dataset):
         resize_h = self.config.data.get("resize_h", -1)
         resize_w = self.config.data.get("resize_w", -1)
         patch_size = self.config.model.patch_size
+        # calculate the effective patch size after merging layers (the icon "Token mergeing" in the paper)
         patch_size = patch_size * 2 ** len(self.config.model.get("merge_layers", [])) 
         square_crop = self.config.data.square_crop
         random_crop = self.config.data.get("random_crop", 1.0)
@@ -48,9 +49,16 @@ class Dataset(Dataset):
             resize_h = int(resize_w / images.shape[2] * images.shape[1])
         elif resize_w == -1:
             resize_w = int(resize_h / images.shape[1] * images.shape[2])
+        # make sure the resized size is divisible by patch size
         resize_h = int(round(resize_h / patch_size)) * patch_size
         resize_w = int(round(resize_w / patch_size)) * patch_size
         images = np.stack([cv2.resize(image, (resize_w, resize_h)) for image in images]) # (num_frames, resize_h, resize_w, 3)
+
+        # square crop to make the aspect ratio 1:1, which is commonly used in NeRF training 
+        # and can improve the performance when the original aspect ratio is very different from 1:1. 
+        # The crop is performed after resizing to avoid losing too much image content. 
+        # If the original aspect ratio is close to 1:1, the crop will not lose much content.
+        #  If the original aspect ratio is very different from 1:1, the crop can help to improve the performance by making the aspect ratio closer to 1
         if square_crop:
             min_size = min(resize_h, resize_w)
             # center crop
@@ -60,6 +68,7 @@ class Dataset(Dataset):
         images = images / 255.0
         images = torch.from_numpy(images).permute(0, 3, 1, 2).float() # (num_frames, 3, resize_h, resize_w)
         
+        # Intrinsic Matrix Adjustment
         h = np.array([frame["h"] for frame in frames])
         w = np.array([frame["w"] for frame in frames])
         fx = np.array([frame["fx"] for frame in frames])
@@ -77,6 +86,10 @@ class Dataset(Dataset):
         intrinsics = torch.from_numpy(intrinsics).float()
 
         # random crop
+        # a data agumentation trick, which can further augment the data and improve the performance.
+        # It crops a smaller portion of the image and then scales it back up to the target resolution. 
+        # Physically, this simulates a camera with a narrower Field of View (FOV). 
+        # The authors use this to train the model to handle a broader range of camera lenses and FOVs
         if random_crop < 1.0:
             random_crop_ratio = np.random.uniform(random_crop, 1.0) if random_crop_ratio is None else random_crop_ratio
             magnify_ratio = 1.0 / random_crop_ratio
@@ -101,7 +114,11 @@ class Dataset(Dataset):
             scene_name = data_json['scene_name']
             frames = data_json['frames']
             image_base_dir = data_path.rsplit('/', 1)[0]
-     
+
+            # Since these datasets are built from video sequences, 
+            # the model shouldn't always just grab the first 32 frames. It needs a strategy.
+            # target here refer to the frames that are used for testing (ground truth)
+            
             # read config
             input_frame_select_type = self.config.data.input_frame_select_type
             target_frame_select_type = self.config.data.target_frame_select_type
@@ -109,7 +126,13 @@ class Dataset(Dataset):
             num_target_frames = self.config.data.get("num_target_frames", 0)
             if num_target_frames == 0:
                 assert target_frame_select_type == 'uniform_every'
+
+            # if this one is false, then the input and target frames are strictly separated, 
+            # which means the model need to predict future frames without seeing them. 
+            # The authors find that for video sequences with large camera motion, it's better to set this one to false, while for video sequences with small camera motion, it's better to set this one to true.
             target_has_input = self.config.data.target_has_input
+
+            # frame distance selection. if it's "all", then the frame, the window cover the whole video
             min_frame_dist = self.config.data.min_frame_dist
             max_frame_dist = self.config.data.get("max_frame_dist", "all")
             if min_frame_dist == "all":
@@ -120,22 +143,27 @@ class Dataset(Dataset):
             min_frame_dist = min(min_frame_dist, len(frames) - 1)
             max_frame_dist = min(max_frame_dist, len(frames) - 1)
             assert min_frame_dist <= max_frame_dist
-            if target_has_input:
+            if target_has_input: # overlap allowed
                 assert min_frame_dist >= max(num_input_frames, num_target_frames) - 1
             else:
                 assert min_frame_dist >= num_input_frames + num_target_frames - 1
+            # random window size selection
             frame_dist = np.random.randint(min_frame_dist, max_frame_dist + 1)
+            # more agumentation: shuffle input frames, reverse input frames (roll a random number to decide whether to do these agumentations)
             shuffle_input_prob = self.config.data.get("shuffle_input_prob", 0.0)
             shuffle_input = np.random.rand() < shuffle_input_prob
             reverse_input_prob = self.config.data.get("reverse_input_prob", 0.0)
             reverse_input = np.random.rand() < reverse_input_prob
-     
+            
             # get frame range
             start_frame_idx = np.random.randint(0, len(frames) - frame_dist)
             end_frame_idx = start_frame_idx + frame_dist
             frame_idx = list(range(start_frame_idx, end_frame_idx + 1))
      
             # get target frames
+            # random: randomly select num_input_frames from the frame_idx
+            # uniform: like if you have 100 frames and need to select 10 frames, then you can select every 10 frames.
+            # uniform_every: like uniform, but the interval is fixed, which means if you select every 10 frames, then you can only select frame 0, 10, 20, ..., 90. 
             if target_frame_select_type == 'random':
                 target_frame_idx = np.random.choice(frame_idx, num_target_frames, replace=False)
             elif target_frame_select_type == 'uniform':
@@ -149,6 +177,7 @@ class Dataset(Dataset):
             target_frame_idx = sorted(target_frame_idx)
      
             # get input frames
+            # kmeans: select frames that are most representative of the whole video clip using k-means clustering. The distance is calculated in the 6-DoF camera pose space (3 for position and 3 for orientation).
             if not target_has_input:
                 frame_idx = [x for x in frame_idx if x not in target_frame_idx]
             if input_frame_select_type == 'random':
@@ -183,14 +212,15 @@ class Dataset(Dataset):
                 input_frame_idx = input_frame_idx[::-1]
             if shuffle_input:
                 np.random.shuffle(input_frame_idx)
-     
+
+
             random_crop_ratio = None
             target_frames = [frames[i] for i in target_frame_idx]
             target_images, target_intr, target_c2ws, random_crop_ratio = self.process_frames(target_frames, image_base_dir)
      
             input_frames = [frames[i] for i in input_frame_idx]
             input_images, input_intr, input_c2ws, _ = self.process_frames(input_frames, image_base_dir, random_crop_ratio)
-     
+        
             # normalize input camera poses
             position_avg = input_c2ws[:, :3, 3].mean(0) # (3,)
             forward_avg = input_c2ws[:, :3, 2].mean(0) # (3,)

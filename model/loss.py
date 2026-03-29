@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torchvision.models import vgg19, VGG19_Weights
 
+# the model feeds both the predicted image and the target image into a pre-trained image classification network 
+# in this case, VGG19
 class PerceptualLoss(nn.Module):
     def __init__(self, device, config):
         super(PerceptualLoss, self).__init__()
