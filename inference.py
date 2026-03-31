@@ -12,10 +12,10 @@ def get_gaussian_reconstruction(llrm_root, json_path, output_folder, checkpoint_
     sys.path.append(llrm_root)
     from model.llrm import LongLRM
 
-    if height != 540:
-        raise NotImplementedError("Only height=540 is supported currently.")
-    if input_num != 32:
-        raise NotImplementedError("Only input_num=32 is supported currently.") 
+    # if height != 540:
+    #     raise NotImplementedError("Only height=540 is supported currently.")
+    # if input_num != 32:
+    #     raise NotImplementedError("Only input_num=32 is supported currently.") 
     default_config = os.path.join(llrm_root, "configs/7m1t_tm.yaml")
     config = os.path.join(llrm_root, "configs/dl3dv_i540_32input_8target.yaml")
     default_config = yaml.safe_load(open(default_config, 'r'))
