@@ -126,21 +126,23 @@ class GaussianRenderer(torch.autograd.Function):
         opacity = opacity.sigmoid().squeeze(-1)
         scale = scale.exp()
         rotation = F.normalize(rotation, p=2, dim=-1)
-        test_w2c = test_c2w.float().inverse().unsqueeze(0).unsqueeze(0) # (1, 1, 4, 4)
-        test_intr_i = torch.zeros(3, 3).to(test_intr.device)
-        test_intr_i[0, 0] = test_intr[0]
-        test_intr_i[1, 1] = test_intr[1]
-        test_intr_i[0, 2] = test_intr[2]
-        test_intr_i[1, 2] = test_intr[3]
-        test_intr_i[2, 2] = 1
-        test_intr_i = test_intr_i.unsqueeze(0).unsqueeze(0) # (1, 1, 3, 3)
-        rendering, _, _ = rasterization(xyz.unsqueeze(0), rotation.unsqueeze(0), scale.unsqueeze(0), opacity.unsqueeze(0), feature.unsqueeze(0),
-                                        test_w2c, test_intr_i, W, H, sh_degree=sh_degree, 
-                                        near_plane=near_plane, far_plane=far_plane,
-                                        render_mode="RGB",
-                                        backgrounds=torch.ones(1, 1, 3).to(test_intr.device),
-                                        rasterize_mode='classic') # (1, 1, H, W, 3)
-        return rendering.squeeze(1) # (1, H, W, 3)
+        test_w2c = test_c2w.float().inverse().unsqueeze(0) 
+        test_intr_i = torch.zeros(1, 3, 3).to(test_intr.device)
+        test_intr_i[0, 0, 0] = test_intr[0]
+        test_intr_i[0, 1, 1] = test_intr[1]
+        test_intr_i[0, 0, 2] = test_intr[2]
+        test_intr_i[0, 1, 2] = test_intr[3]
+        test_intr_i[0, 2, 2] = 1
+        
+        rendering, _, _ = rasterization(
+            xyz, rotation, scale, opacity, feature,
+            test_w2c, test_intr_i, W, H, sh_degree=sh_degree, 
+            near_plane=near_plane, far_plane=far_plane,
+            render_mode="RGB",
+            backgrounds=torch.ones(3).to(test_intr.device),
+            rasterize_mode='classic'
+        )
+        return rendering
 
     @staticmethod
     def forward(ctx, xyz, feature, scale, rotation, opacity, test_c2ws, test_intr,
@@ -253,21 +255,28 @@ class LongLRM(nn.Module):
             scale_i = scale[i].exp()
             rotation_i = F.normalize(rotation[i], p=2, dim=-1)
             opacity_i = opacity[i].sigmoid().squeeze(-1)
-            test_w2c_i = test_c2ws[i].float().inverse().unsqueeze(0) # (1, V, 4, 4)
+            
+            # View shape: (V, 4, 4) and (V, 3, 3)
+            test_w2c_i = test_c2ws[i].float().inverse()
             test_intr_i = torch.zeros(V, 3, 3).to(test_intr.device)
             test_intr_i[:, 0, 0] = test_intr[i, :, 0]
             test_intr_i[:, 1, 1] = test_intr[i, :, 1]
             test_intr_i[:, 0, 2] = test_intr[i, :, 2]
             test_intr_i[:, 1, 2] = test_intr[i, :, 3]
             test_intr_i[:, 2, 2] = 1
-            test_intr_i = test_intr_i.unsqueeze(0) # (1, V, 3, 3)
-            rendering, _, _ = rasterization(xyz_i.unsqueeze(0), rotation_i.unsqueeze(0), scale_i.unsqueeze(0), opacity_i.unsqueeze(0), feature_i.unsqueeze(0),
-                                            test_w2c_i, test_intr_i, W, H, sh_degree=self.config.model.gaussians.sh_degree, 
-                                            near_plane=self.config.model.gaussians.near_plane, far_plane=self.config.model.gaussians.far_plane,
-                                            render_mode="RGB",
-                                            backgrounds=torch.ones(1, V, 3).to(test_intr.device),
-                                            rasterize_mode='classic') # (1, V, H, W, 3)
-            renderings.append(rendering.squeeze(0))
+            
+            # backgrounds=(3,) broadcasts to (V, 3)
+            rendering, _, _ = rasterization(
+                xyz_i, rotation_i, scale_i, opacity_i, feature_i,
+                test_w2c_i, test_intr_i, W, H, 
+                sh_degree=self.config.model.gaussians.sh_degree, 
+                near_plane=self.config.model.gaussians.near_plane, 
+                far_plane=self.config.model.gaussians.far_plane,
+                render_mode="RGB",
+                backgrounds=torch.ones(3).to(test_intr.device),
+                rasterize_mode='classic'
+            )
+            renderings.append(rendering)
         return torch.stack(renderings, dim=0) # (B, V, H, W, 3)
 
     def forward(self, input_dict):
