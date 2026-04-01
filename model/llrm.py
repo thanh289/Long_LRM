@@ -138,7 +138,7 @@ class GaussianRenderer(torch.autograd.Function):
                                         test_w2c, test_intr_i, W, H, sh_degree=sh_degree, 
                                         near_plane=near_plane, far_plane=far_plane,
                                         render_mode="RGB",
-                                        backgrounds=torch.ones(H, W, 3).to(test_intr.device),
+                                        backgrounds=torch.ones(1, H, W, 3).to(test_intr.device),
                                         rasterize_mode='classic') # (1, H, W, 3) 
         return rendering # (1, H, W, 3)
 
